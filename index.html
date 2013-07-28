@@ -1,0 +1,170 @@
+<html>
+<head>
+<style>
+body {
+	margin: 0px;
+	background-color: #FFFFF0;
+}
+</style>
+
+<script type="text/javascript" src="js/processing.js"></script>
+<script type="text/javascript" src="js/jquery.js"></script>
+
+<script type="application/processing" data-processing-target="canvas1">
+
+levels = [
+	new Concealer(new Dot()),
+	new BlinkingConcealer(new Dot()),
+];
+
+user = new User();
+
+int currentLevel = 0;
+
+float docMaxWidth = document.body.clientWidth;
+float docMaxHeight = document.body.clientHeight;
+
+
+void setup() {
+ 	size(docMaxWidth, docMaxHeight, P2D);
+}
+
+void draw() {
+
+	Concealer concealer = levels[currentLevel];
+
+	boolean won = concealer.play(user);
+	if (won) {
+		currentLevel++;
+	}
+
+	fill(0, 0, 30);
+	text("Level " + (currentLevel + 1), 15, 30);
+}
+
+class User {
+
+	float x = 0, y = 0;
+
+	void locateAtMouse() {
+		x = mouseX;
+		y = mouseY;
+	}
+
+	float distanceFrom(Dot dot) {
+		return sqrt(pow(x - dot.x, 2) + pow(y - dot.y, 2));
+	}
+}
+
+/**
+* Utility class to flicker the dot
+*/
+class FramedAlpha {
+	
+	int frame = 0;
+	float adjustRate = 15;
+
+	void adjustAlpha(Dot dot) {
+		frame++;
+
+		a = 255*(cos((frame/adjustRate) - PI) + 1)/2;
+		dot.changeAlpha(a);
+	}
+}
+
+/**
+* Concealer owns the Dot. It decides how it changes over time. Has one
+* template function
+*/
+class Concealer {
+
+	Dot dot;
+	
+	Concealer(Dot _dot) {
+		dot = _dot;
+	}
+
+	/**
+	* Play a frame with the user. The concealer returns true
+	* if the User has won the frame. 
+	*/
+	boolean play(User user) {
+		background(255,255,240,255);
+		dot.move();
+		dot.draw();
+		user.locateAtMouse();
+		return isClose(user);
+	}
+
+	boolean isClose(User user) {
+		return user.distanceFrom(dot) < 5;
+	}
+}
+
+class BlinkingConcealer extends Concealer {
+
+	FramedAlpha framedAlpha;
+
+	BlinkingConcealer(Dot _dot){
+		super(_dot);
+		framedAlpha = new FramedAlpha();
+	}
+
+	boolean play(User user) {
+		framedAlpha.adjustAlpha(dot);
+		return super.play(user);
+	}
+}
+
+class ProximityConcealer extends Concealer {
+
+}
+
+class Dot {
+	float x = 100, y=100;
+	float dx = 1.5, dy = 1.5;
+	float a = 255;
+	float radius = 5;
+
+	void draw() {
+		pushMatrix();
+		noStroke();
+		fill(10,0,0, a);
+		ellipse(x, y, radius*2, radius*2);
+		popMatrix();
+	}
+
+	void move() {
+		x += dx;
+		y += dy;
+		if (x > docMaxWidth || x < 0) {
+			dx = -dx;
+		}
+		if (y > docMaxHeight || y < 0) {
+			dy = -dy
+		}
+	}
+
+	void changeDirection(float _dx, float _dy) {
+		dx = _dx;
+		dy = _dy;
+	}
+
+	void changeAlpha(float _a) {
+		
+		a = floor(_a);
+	}
+}
+
+</script>
+
+<script type="text/javascript">
+$(function() {
+  $("#canvas1").focus()
+});
+</script>
+</head>
+<body>
+	<canvas id="canvas1" tabindex="1"></canvas>
+</body>
+</html>
