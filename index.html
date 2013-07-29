@@ -12,19 +12,20 @@ body {
 
 <script type="application/processing" data-processing-target="canvas1">
 
+/* @pjs pauseOnBlur="true"; */
+
+float docMaxWidth = document.body.clientWidth;
+float docMaxHeight = document.body.clientHeight;
+
 levels = [
-	new Concealer(new Dot()),
-	new BlinkingConcealer(new Dot()),
-	new ProximityConcealer(new Dot()),
+	new Level("the beginning", new Concealer(new Dot()), null, null),
+	new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
+	new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
 ];
 
 user = new User();
 
 int currentLevel = 0;
-
-float docMaxWidth = document.body.clientWidth;
-float docMaxHeight = document.body.clientHeight;
-
 
 void setup() {
  	size(docMaxWidth, docMaxHeight, P2D);
@@ -32,19 +33,92 @@ void setup() {
 
 void draw() {
 
-	Concealer concealer = levels[currentLevel];
+	Level level = levels[currentLevel];
 
-	boolean won = concealer.play(user);
+
+	boolean won = level.playLevel(user);
 	if (won) {
 		currentLevel++;
 	}
 
 	fill(0, 0, 30);
 	text("Level " + (currentLevel + 1), 15, 30);
+	text(level.name, 15, 45);
+}
+
+/**
+* A level describes a Concealer (which is used to play the game),
+* transitions between levels and help text.
+*/
+class Level {
+
+	Transition in, out;
+	Concealer concealer;
+	String name;
+
+	Level(String name, Concealer _concealer, Transition _in, Transition _out) {
+		this.name = name;
+		this.in = _in ? _in : new Transition();
+		this.out = _out ? _out : new Transition();
+		this.concealer = _concealer;
+	}
+
+	/**
+	* @return true as long as the user has not won the level and
+	* no transition is happening.
+	*/
+	boolean playLevel(User user) {
+		if (in.doTransition()) {
+			return false;
+		}
+		if (!concealer.play(user)) {
+			return false;
+		}
+		if (out.doTransition()) {
+			return false;
+		}
+		return true;
+	}
+
+}
+
+class Transition {
+
+	int frame = 0, totalFrames = 0;
+	Transition next;
+
+	void inTransition() {
+		// no-op
+	}
+
+	/**
+	* @return false when done.
+	*/
+	boolean doTransition() {
+		if (frame >= totalFrames) {
+			return next ? next.draw() : false;
+		}
+		inTransition();
+		frame++;
+		return true;
+	}
+
+}
+
+class DarkenBackground extends Transition {
+
+	DarkenBackground() {
+		this.totalFrames = 200;
+	}
+
+	void inTransition() {
+		float gr = 255 * (totalFrames - frame)/totalFrames;
+		background(gr);
+	}
 }
 
 class User {
-
+ 
 	float x = 0, y = 0;
 
 	void locateAtMouse() {
@@ -98,7 +172,7 @@ class Concealer {
 	}
 
 	boolean isClose(User user) {
-		return user.distanceFrom(dot) < 5;
+		return user.distanceFrom(dot) <= dot.radius;
 	}
 }
 
@@ -126,7 +200,7 @@ class ProximityConcealer extends Concealer {
 	boolean play(User user) {
 		user.locateAtMouse();
 		distance = user.distanceFrom(dot);
-		if (distance < 50) {
+		if (distance < 100) {
 			dot.changeAlpha(255);
 		} else {
 			dot.changeAlpha(0);
@@ -143,10 +217,15 @@ class ProximityConcealer extends Concealer {
 }
 
 class Dot {
-	float x = 100, y=100;
+	float x = 0, y = 0;
 	float dx = 1.5, dy = 1.5;
 	float a = 255;
 	float radius = 5;
+
+	Dot() {
+		x = random(100, docMaxWidth);
+		y = random(100, docMaxHeight);
+	}
 
 	void draw() {
 		pushMatrix();
@@ -173,7 +252,6 @@ class Dot {
 	}
 
 	void changeAlpha(float _a) {
-		
 		a = floor(_a);
 	}
 }
