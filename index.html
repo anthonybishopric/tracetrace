@@ -3,7 +3,7 @@
 <style>
 body {
 	margin: 0px;
-	background-color: #FFFFF0;
+	background-color: #FFFFFF;
 }
 </style>
 
@@ -17,11 +17,18 @@ body {
 float docMaxWidth = document.body.clientWidth;
 float docMaxHeight = document.body.clientHeight;
 
-levels = [
-	new Level("the beginning", new Concealer(new Dot()), null, null),
-	new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
-	new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
+int clickedThisFrame = 0;
+
+Level[] levels = [
+	// new Level("the beginning", new GettingStarted(new Dot()), null, null),
+	// new Level("movement", new Concealer(new Dot()), null, null),
+	// new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
+	// new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
+	// new Level("target acquired", new TargetAcquiredConcealer(new Dot()), new DarkenBackground(),null),
+	new Level("you only need one", new YouOnlyNeedOneConcealer(new Dot()), null, null)
 ];
+
+TitleText title = new TitleText();
 
 user = new User();
 
@@ -29,21 +36,47 @@ int currentLevel = 0;
 
 void setup() {
  	size(docMaxWidth, docMaxHeight, P2D);
+
+}
+
+void mousePressed() {
+  clickedThisFrame = 2;
 }
 
 void draw() {
 
 	Level level = levels[currentLevel];
-
-
 	boolean won = level.playLevel(user);
 	if (won) {
 		currentLevel++;
 	}
 
-	fill(0, 0, 30);
-	text("Level " + (currentLevel + 1), 15, 30);
-	text(level.name, 15, 45);
+	title.draw(currentLevel, level.name);
+
+	// counter of frames for which a click event is acceptable.
+	clickedThisFrame--;
+}
+
+class TitleText {
+	float x = 15, y = 30;
+	int r = 0,g = 0,b = 0, a = 255;
+
+	void setColor(int r, int g, int b, int a) {
+		this.r = r;
+		this.g = g;
+		this.b = b;
+		this.a = a;
+	}
+
+	void setGray(int gr, int a) {
+		this.setColor(gr, gr, gr, a);
+	}
+
+	void draw(levelNumber, levelName) {
+		fill(r,g,b,a);
+		text("Level " + (levelNumber + 1), x, y);
+		text(levelName, x, y + 15);
+	}
 }
 
 /**
@@ -113,21 +146,62 @@ class DarkenBackground extends Transition {
 
 	void inTransition() {
 		float gr = 255 * (totalFrames - frame)/totalFrames;
+		title.setGray(255 - gr, 255);
 		background(gr);
 	}
 }
 
-class User {
- 
+class LightenBackground extends Transition {
+
+	LightenBackground() {
+		this.totalFrames = 200;
+	}
+
+	void inTransition() {
+		float gr = 255 * (totalFrames - frame)/totalFrames;
+		title.setGray(gr, 255);
+		background(255 - gr);
+	}
+}
+
+class Timer {
+
+	int totalFrameCount, current;
+	Object[] callbacks = null;
+
+	Timer(totalFrameCount) {
+		this.totalFrameCount = totalFrameCount;
+		current = 0;
+		this.callbacks = [];
+	}
+
+	void addCallback(fn) {
+		this.callbacks[this.callbacks.length] = fn;
+	}
+
+	void hit() {
+		current++;
+		if (current % totalFrameCount == 0) {
+			for(int i = 0; i < callbacks.length; i++) {
+				callbacks[i]();
+			}
+		}
+	}
+}
+
+class Locatable {
 	float x = 0, y = 0;
+
+	float distanceFrom(Locatable other) {
+		return sqrt(pow(x - other.x, 2) + pow(y - other.y, 2));
+	}
+}
+
+class User extends Locatable{
 
 	void locateAtMouse() {
 		x = mouseX;
 		y = mouseY;
-	}
-
-	float distanceFrom(Dot dot) {
-		return sqrt(pow(x - dot.x, 2) + pow(y - dot.y, 2));
 	}
 }
 
@@ -138,13 +212,81 @@ class FramedAlpha {
 	
 	int frame = 0;
 	float adjustRate = 15;
+	Object onMinima = null;
+	Object onMaxima = null;
+
+	float current, currentMinus1, currentPlus1;
+
 
 	void adjustAlpha(Dot dot) {
 		frame++;
 
-		a = 255*(cos((frame/adjustRate) - PI) + 1)/2;
-		dot.changeAlpha(a);
+		this.currentMinus1 = this.current;
+
+		if (this.currentPlus1 != null ) {
+			this.current = this.currentPlus1;
+		} else {
+			this.current = 255*(cos((frame/adjustRate) - PI) + 1)/2;
+		}
+		this.currentPlus1 = 255*(cos(((frame + 1)/adjustRate) - PI) + 1)/2;
+
+		if (this.current > this.currentMinus1 && this.current > this.currentPlus1 && this.onMaxima != null) {
+			onMaxima();
+		}
+
+		if (this.current < this.currentMinus1 && this.current < this.currentPlus1 && this.onMinima != null) {
+			onMinima();
+		}		
+
+		dot.changeAlpha(this.current);
 	}
+
+	void addOnMinima(fn) {
+		onMinima = fn;
+	}
+
+	void addOnMaxima(fn) {
+		onMaxima = fn;
+	}
+}
+
+/**
+* Quadratic ease out function
+*/
+class QuadEaseOut{
+
+  float start = 0, change = 0;
+  int frame = 0;
+  int totalFrames = 0;
+  boolean done = false;
+
+  QuadEaseOut(float _start, float _end, int _frames) {
+    start = _start;
+    change = _end - _start;
+    totalFrames = _frames;
+  }
+
+  float valueAtNextFrame() {
+    return valueAtFrame(1);
+  }
+
+  float valueAtCurrentFrame() {
+    return valueAtFrame(0);
+  }
+
+  float valueAtFrame(int frameDiff) {
+    float progress = (frame + frameDiff) / totalFrames;
+    if (progress >= 1) {
+      return start + change;
+    }
+    return -change * progress*(progress - 2) + start;
+  }
+
+  float goToNextFrame() {
+    float value = valueAtFrame(frame);
+    frame++;
+    return value;
+  }
 }
 
 /**
@@ -164,15 +306,43 @@ class Concealer {
 	* if the User has won the frame. 
 	*/
 	boolean play(User user) {
-		background(255,255,240,255);
+		background(255,255);
 		dot.move();
 		dot.draw();
 		user.locateAtMouse();
-		return isClose(user);
+		return isHit(user);
 	}
 
-	boolean isClose(User user) {
-		return user.distanceFrom(dot) <= dot.radius;
+	boolean isHit(User user) {
+		return user.distanceFrom(dot) <= dot.radius * 3  && clickedThisFrame > 0; // diameter to make it easier
+	}
+}
+
+class GettingStarted extends Concealer {
+
+	QuadEaseOut dotAppear = null;
+
+	GettingStarted(Dot dot) {
+		super(dot);
+		dotAppear = new QuadEaseOut(0, 255, 240);
+		dot.changeAlpha(0);
+		dot.setPosition(docMaxWidth / 2, 400);
+	}
+
+	boolean play(User user) {
+		background(255, 255);
+
+		float dotAlpha = dotAppear.goToNextFrame();
+
+		fill(0, dotAlpha);
+		text("Click the dot.", docMaxWidth / 2 - 30, 100);
+
+		dot.changeAlpha(dotAlpha);
+		dot.draw();
+
+		user.locateAtMouse();
+
+		return isHit(user);
 	}
 }
 
@@ -183,6 +353,9 @@ class BlinkingConcealer extends Concealer {
 	BlinkingConcealer(Dot _dot){
 		super(_dot);
 		framedAlpha = new FramedAlpha();
+		framedAlpha.addOnMinima(function () {
+			_dot.teleport();
+		});
 	}
 
 	boolean play(User user) {
@@ -206,33 +379,158 @@ class ProximityConcealer extends Concealer {
 			dot.changeAlpha(0);
 		}
 
-		a =  255 - 255.0/pow(2.0, distance/100);
-		background(0, a);
+		a =  255.0/pow(2.0, distance/100);
+		background(a, 255);
+		title.setGray(255 - a, 255);
 
 		dot.move();
 		dot.draw();
 		
-		return isClose(user);
+		return isHit(user);
 	}
 }
 
-class Dot {
-	float x = 0, y = 0;
+class TargetAcquiredConcealer extends Concealer {
+
+	Timer timer = null;
+
+	TargetAcquiredConcealer(Dot dot) {
+		super(dot);
+		this.timer = new Timer(1000);
+		timer.addCallback(function() {
+			dot.teleport();
+		})
+	}
+
+	boolean play(User user) {
+		
+		user.locateAtMouse();
+
+		int colorWidth = 5;
+		background(0,255);
+
+		PImage yPos = createImage(colorWidth, user.y, RGB);
+		PImage yNeg = createImage(colorWidth, docMaxHeight - user.y, RGB);
+
+		PImage xPos = createImage(docMaxWidth - user.x, colorWidth, RGB);
+		PImage xNeg = createImage(user.x, colorWidth, RGB);
+
+		randomColors = new Object[colorWidth];
+		for (int i = 0; i < colorWidth; i++) {
+			randomColors[i] = color(random(255), random(255), random(255), 255);
+		}
+		
+		if (user.x < dot.x) {
+			for (int i = 0; i < xPos.pixels.length; i++) {
+				xPos.pixels[i] = randomColors[i % colorWidth];
+			}
+
+		} else {
+			for (int i = 0; i < xNeg.pixels.length; i++) {
+				xNeg.pixels[i] = randomColors[i % colorWidth];
+			}
+		}
+
+		if (user.y > dot.y) {
+			for (int i = 0; i < yPos.pixels.length; i++) {
+				yPos.pixels[i] = randomColors[i % colorWidth];
+			}
+		} else {
+			for (int i = 0; i < yNeg.pixels.length; i++) {
+				yNeg.pixels[i] = randomColors[i % colorWidth];
+			}
+		}
+
+		image(yPos, user.x - colorWidth / 2, 0);
+		image(yNeg, user.x - colorWidth / 2, user.y);
+		image(xPos, user.x, user.y - colorWidth / 2);
+		image(xNeg, 0, user.y - colorWidth / 2);
+
+		dot.move();
+		dot.draw();
+
+		return isHit(user);
+	}
+}
+
+class YouOnlyNeedOneConcealer extends Concealer {
+
+	Dot[] otherDots;
+
+	YouOnlyNeedOneConcealer(Dot dot) {
+		super(dot);
+		otherDots = new Dot[15];
+		for(i = 0; i < otherDots.length; i++) {
+			otherDots[i] = new Dot();
+		}
+	}
+
+	boolean play(User user) {
+		background(255,255);
+		for (int i = 0; i < otherDots.length; i++) {
+			Dot target = otherDots[i];
+			Dot closest = null;
+			float closestDist = null;
+			for (int j = 0; j < otherDots.length; j++) {
+				
+				Dot aDot = null;
+				if (i == j) {
+					aDot = dot;
+				} else {
+					aDot = otherDots[j];
+				}
+				
+				float aDotDist = aDot.distanceFrom(target);
+				if (closest == null || aDotDist < closestDist) {
+					closest = aDot;
+					closestDist = aDotDist;
+				}
+				
+			}
+
+			float adjustedDx = closest.x - target.x;
+			float adjustedDy = closest.y - target.y;
+
+			float attraction = 1000;
+
+			target.dx = (target.dx * (attraction -1 ) + adjustedDx) / attraction;
+			target.dy = (target.dy * (attraction -1 ) + adjustedDy) / attraction;
+			target.move();
+			target.draw();
+
+		}
+		dot.move();
+		dot.draw();
+		user.locateAtMouse();
+		return isHit(user);
+	}
+}
+
+class Dot extends Locatable{
 	float dx = 1.5, dy = 1.5;
 	float a = 255;
 	float radius = 5;
 
 	Dot() {
-		x = random(100, docMaxWidth);
-		y = random(100, docMaxHeight);
+		teleport();
+	}
+
+	void teleport() {
+		this.x = random(100, docMaxWidth);
+		this.y = random(100, docMaxHeight);
 	}
 
 	void draw() {
-		pushMatrix();
+		
 		noStroke();
 		fill(10,0,0, a);
 		ellipse(x, y, radius*2, radius*2);
-		popMatrix();
+		
+	}
+
+	void setPosition(int x, int y) {
+		this.x = x;
+		this.y = y;
 	}
 
 	void move() {
