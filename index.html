@@ -20,12 +20,14 @@ float docMaxHeight = document.body.clientHeight;
 int clickedThisFrame = 0;
 
 Level[] levels = [
-	// new Level("the beginning", new GettingStarted(new Dot()), null, null),
-	// new Level("movement", new Concealer(new Dot()), null, null),
-	// new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
-	// new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
-	// new Level("target acquired", new TargetAcquiredConcealer(new Dot()), new DarkenBackground(),null),
-	new Level("you only need one", new YouOnlyNeedOneConcealer(new Dot()), null, null)
+	new Level("the beginning", new GettingStarted(new Dot()), null, null),
+	new Level("movement", new Concealer(new Dot()), null, null),
+	new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
+	new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
+	new Level("target acquired", new TargetAcquiredConcealer(new Dot()), new DarkenBackground(),null),
+	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot()), new LightenBackground(), null),
+	// new Level("trainee", new SecondMouseCursorConcealer(new Dot())),
+
 ];
 
 TitleText title = new TitleText();
@@ -129,13 +131,21 @@ class Transition {
 	*/
 	boolean doTransition() {
 		if (frame >= totalFrames) {
-			return next ? next.draw() : false;
+			return next ? next.doTransition() : false;
 		}
 		inTransition();
 		frame++;
 		return true;
 	}
 
+}
+
+class Delay extends Transition {
+	
+	Delay(int frameCount, Transition next) {
+		totalFrames = frameCount;
+		this.next = next;
+	}
 }
 
 class DarkenBackground extends Transition {
@@ -250,20 +260,25 @@ class FramedAlpha {
 	}
 }
 
-/**
-* Quadratic ease out function
-*/
-class QuadEaseOut{
-
-  float start = 0, change = 0;
+class Tween {
+  float start = 0, end = 0, change = 0;
   int frame = 0;
   int totalFrames = 0;
   boolean done = false;
 
-  QuadEaseOut(float _start, float _end, int _frames) {
+  Tween(float _start, float _end, int _frames) {
     start = _start;
+    end = _end;
     change = _end - _start;
     totalFrames = _frames;
+  }
+
+  boolean done() {
+  	return frame >=totalFrames;
+  }
+
+  float valueAtFrame() {
+  	throw new Exception("not implemented");
   }
 
   float valueAtNextFrame() {
@@ -274,19 +289,45 @@ class QuadEaseOut{
     return valueAtFrame(0);
   }
 
-  float valueAtFrame(int frameDiff) {
-    float progress = (frame + frameDiff) / totalFrames;
-    if (progress >= 1) {
-      return start + change;
-    }
-    return -change * progress*(progress - 2) + start;
-  }
-
   float goToNextFrame() {
-    float value = valueAtFrame(frame);
+    float value = valueAtFrame(1);
     frame++;
     return value;
   }
+}
+
+/**
+* Quadratic ease out function
+*/
+class QuadEaseOut extends Tween{
+
+	QuadEaseOut(float start, float end, int frames){
+		super(start, end, frames);
+	}
+
+	float valueAtFrame(int frameDiff) {
+		float progress = (frame + frameDiff) / totalFrames;
+		if (progress >= 1) {
+		  return start + change;
+		}
+		return -change * progress*(progress - 2) + start;
+	}
+
+}
+
+class Linear extends Tween{
+
+	Linear(float start, float end, int frames) {
+		super(start, end, frames);
+	}
+
+	float valueAtFrame(int frameDiff) {
+		float progress = (frame + frameDiff) / totalFrames;
+		if (progress >= 1) {
+			return start + change;
+		}
+		return start + progress*change;
+	}
 }
 
 /**
@@ -320,11 +361,11 @@ class Concealer {
 
 class GettingStarted extends Concealer {
 
-	QuadEaseOut dotAppear = null;
+	Tween dotAppear = null;
 
 	GettingStarted(Dot dot) {
 		super(dot);
-		dotAppear = new QuadEaseOut(0, 255, 240);
+		dotAppear = new Linear(0, 255, 80);
 		dot.changeAlpha(0);
 		dot.setPosition(docMaxWidth / 2, 400);
 	}
@@ -456,58 +497,70 @@ class TargetAcquiredConcealer extends Concealer {
 class YouOnlyNeedOneConcealer extends Concealer {
 
 	Dot[] otherDots;
+	Tween dotAppear;
 
 	YouOnlyNeedOneConcealer(Dot dot) {
 		super(dot);
-		otherDots = new Dot[15];
+		dot.changeAlpha(0);
+		otherDots = new Dot[100];
 		for(i = 0; i < otherDots.length; i++) {
 			otherDots[i] = new Dot();
+			otherDots[i].changeDirection(1.5, 1.5);
+			otherDots[i].changeAlpha(0);
 		}
+		dotAppear = new Linear(0, 255, 90);
 	}
 
 	boolean play(User user) {
 		background(255,255);
+		user.locateAtMouse();
+
+		float dotAlpha = dotAppear.valueAtCurrentFrame();
+
 		for (int i = 0; i < otherDots.length; i++) {
 			Dot target = otherDots[i];
-			Dot closest = null;
-			float closestDist = null;
-			for (int j = 0; j < otherDots.length; j++) {
-				
-				Dot aDot = null;
-				if (i == j) {
-					aDot = dot;
-				} else {
-					aDot = otherDots[j];
-				}
-				
-				float aDotDist = aDot.distanceFrom(target);
-				if (closest == null || aDotDist < closestDist) {
-					closest = aDot;
-					closestDist = aDotDist;
-				}
-				
+
+			float angleTo = target.vectorAngle(dot);
+
+			if (angleTo > PI) {
+				angleTo = angleTo - (2*PI);
 			}
 
-			float adjustedDx = closest.x - target.x;
-			float adjustedDy = closest.y - target.y;
+			float aDotDist = target.distanceFrom(dot);
 
-			float attraction = 1000;
+			target.rotateBy( angleTo / (aDotDist+1));
 
-			target.dx = (target.dx * (attraction -1 ) + adjustedDx) / attraction;
-			target.dy = (target.dy * (attraction -1 ) + adjustedDy) / attraction;
+			target.changeAlpha(dotAlpha);
 			target.move();
 			target.draw();
 
 		}
+		dot.changeAlpha(dotAlpha);
+		dotAppear.goToNextFrame();
+
+		userDotDist = user.distanceFrom(dot);
+		positionAngle = dot.positionAngle(user);
+
+		if (positionAngle < 0) {
+			positionAngle = positionAngle + 2*PI;
+		}
+
+		// dot.rotateBy((positionAngle - HALF_PI) / 10000*(userDotDist + 1));
+
 		dot.move();
 		dot.draw();
-		user.locateAtMouse();
+		// dot.debug(user);
+		
 		return isHit(user);
 	}
+
+
 }
 
 class Dot extends Locatable{
+
 	float dx = 1.5, dy = 1.5;
+
 	float a = 255;
 	float radius = 5;
 
@@ -551,6 +604,72 @@ class Dot extends Locatable{
 
 	void changeAlpha(float _a) {
 		a = floor(_a);
+	}
+
+	void rotateBy(float theta) {
+		if (isNaN(theta)){
+			throw new Exception();
+		}
+		cs = cos(theta);
+		sn = sin(theta);
+
+		tempx = dx * cs - dy * sn;
+		tempy = dx * sn + dy * cs;
+
+		dx = tempx;
+		dy = tempy;
+
+	}
+
+	/**
+	* Two dots are traveling along their own respective
+	* dy/dx. This function returns the angle between
+	* the vectors represented by dy/dx.
+	*/
+	float vectorAngle(Dot l) {
+		float myMagnitude = sqrt(pow(dx,2) + pow(dy,2));
+		float otherMagnitude = sqrt(pow(l.dx,2) + pow(l.dy,2));
+		float scalarProd = dx * l.dx + dy * l.dy;
+
+		float angle = acos(scalarProd/(myMagnitude * otherMagnitude));
+		return isNaN(angle) ? 0 : angle;
+	}
+
+	/**
+	* One dot is moving along a dy/dx. This function returns
+	* the angle between the vector represented by its dy/dx and
+	* a vector which represents the dy/dx necessary to arrive at
+	* the position of the given dot instance in the current frame.
+	*/
+	float positionAngle(Locatable l) {
+		// dot vector
+		float ldx = l.x - x;
+		float ldy = l.y - y;
+
+		// determine theta between my dy/dx and dot vector
+		float myMagnitude = sqrt(pow(dx,2) + pow(dy,2));
+		float otherMagnitude = sqrt(pow(ldx,2) + pow(ldy,2));
+		float scalarProd = dx * ldx + dy * ldy;
+
+		float angle = acos(scalarProd/(myMagnitude * otherMagnitude));
+		return isNaN(angle) ? 0 : angle;
+	}
+
+	void debug(User user) {
+		float distance = distanceFrom(user);
+		float angle = positionAngle(user);
+		fill(0, 255, 0, 255);
+		text((round(angle * 100, 4)/100) + "r", x, y+25);
+
+		noFill();
+		stroke(0,255,0,255);
+		ellipse(x, y, distance*2, distance*2);
+
+		line(x, y, user.x, user.y);
+
+		if (positionAngle < 0) {
+			positionAngle = positionAngle + 2*PI;
+		}
 	}
 }
 
