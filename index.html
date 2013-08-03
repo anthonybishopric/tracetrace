@@ -20,12 +20,12 @@ float docMaxHeight = document.body.clientHeight;
 int clickedThisFrame = 0;
 
 Level[] levels = [
-	new Level("the beginning", new GettingStarted(new Dot()), null, null),
-	new Level("movement", new Concealer(new Dot()), null, null),
-	new Level("it won't always be easy", new BlinkingConcealer(new Dot()), null, null),
-	new Level("follow the light", new ProximityConcealer(new Dot()), new DarkenBackground(), null),
-	new Level("target acquired", new TargetAcquiredConcealer(new Dot()), new DarkenBackground(),null),
-	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot()), new LightenBackground(), null),
+	new Level("the beginning", new GettingStarted(new Dot())),
+	new Level("movement", new Concealer(new Dot())),
+	new Level("it won't always be easy", new BlinkingConcealer(new Dot())),
+	new Level("follow the light", new ProximityConcealer(new Dot())),
+	new Level("target acquired", new TargetAcquiredConcealer(new Dot())),
+	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot())),
 	// new Level("trainee", new SecondMouseCursorConcealer(new Dot())),
 
 ];
@@ -88,14 +88,15 @@ class TitleText {
 class Level {
 
 	Transition in, out;
+	boolean completed = false;
 	Concealer concealer;
 	String name;
 
-	Level(String name, Concealer _concealer, Transition _in, Transition _out) {
+	Level(String name, Concealer _concealer) {
 		this.name = name;
-		this.in = _in ? _in : new Transition();
-		this.out = _out ? _out : new Transition();
 		this.concealer = _concealer;
+		this.in = concealer.intro();
+		this.out = concealer.outro();
 	}
 
 	/**
@@ -103,13 +104,20 @@ class Level {
 	* no transition is happening.
 	*/
 	boolean playLevel(User user) {
-		if (in.doTransition()) {
+
+		if (in && in.doTransition()) {
 			return false;
 		}
-		if (!concealer.play(user)) {
-			return false;
+		if (!completed) {
+			boolean play = concealer.play(user);
+			if (!play) {
+				return false;
+			}
+			else {
+				completed = true;
+			}
 		}
-		if (out.doTransition()) {
+		if (out && out.doTransition()) {
 			return false;
 		}
 		return true;
@@ -137,6 +145,7 @@ class Transition {
 		frame++;
 		return true;
 	}
+
 
 }
 
@@ -357,6 +366,14 @@ class Concealer {
 	boolean isHit(User user) {
 		return user.distanceFrom(dot) <= dot.radius * 3  && clickedThisFrame > 0; // diameter to make it easier
 	}
+
+	Transition intro() {
+		return null;
+	}
+
+	Transition outro() {
+		return null;
+	}
 }
 
 class GettingStarted extends Concealer {
@@ -429,6 +446,10 @@ class ProximityConcealer extends Concealer {
 		
 		return isHit(user);
 	}
+
+	Transition intro() {
+		return new DarkenBackground();
+	}
 }
 
 class TargetAcquiredConcealer extends Concealer {
@@ -492,6 +513,10 @@ class TargetAcquiredConcealer extends Concealer {
 
 		return isHit(user);
 	}
+
+	Transition intro() {
+		return new DarkenBackground();
+	}
 }
 
 class YouOnlyNeedOneConcealer extends Concealer {
@@ -554,7 +579,9 @@ class YouOnlyNeedOneConcealer extends Concealer {
 		return isHit(user);
 	}
 
-
+	Transition intro() {
+		return new LightenBackground();
+	}
 }
 
 class Dot extends Locatable{
