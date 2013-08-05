@@ -19,6 +19,7 @@ float docMaxHeight = document.body.clientHeight;
 
 int clickedThisFrame = 0;
 
+
 Level[] levels = [
 	new Level("the beginning", new GettingStarted(new Dot())),
 	new Level("movement", new Concealer(new Dot())),
@@ -26,7 +27,7 @@ Level[] levels = [
 	new Level("follow the light", new ProximityConcealer(new Dot())),
 	new Level("target acquired", new TargetAcquiredConcealer(new Dot())),
 	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot())),
-	// new Level("trainee", new SecondMouseCursorConcealer(new Dot())),
+	new Level("trainee", new SecondMouseCursorConcealer(new Dot())),
 
 ];
 
@@ -51,17 +52,21 @@ void draw() {
 	boolean won = level.playLevel(user);
 	if (won) {
 		currentLevel++;
+		Level nextLevel = levels[currentLevel];
+		title.setLevelNumber(currentLevel);
+		title.setLevelName(nextLevel.name);
 	}
 
-	title.draw(currentLevel, level.name);
+	title.draw();
 
 	// counter of frames for which a click event is acceptable.
 	clickedThisFrame--;
 }
 
-class TitleText {
+class PositionedText {
 	float x = 15, y = 30;
 	int r = 0,g = 0,b = 0, a = 255;
+	String content;
 
 	void setColor(int r, int g, int b, int a) {
 		this.r = r;
@@ -74,7 +79,38 @@ class TitleText {
 		this.setColor(gr, gr, gr, a);
 	}
 
-	void draw(levelNumber, levelName) {
+	void changeAlpha(float a) {
+		this.a = a;
+	}
+
+	void setText(String t) {
+		this.content = t;
+	}
+
+	void draw() {
+		fill(r,g,b,a);
+		text(this.content, x, y);
+	}
+
+	void setPosition(float x, float y) {
+		this.x = x;
+		this.y = y;
+	}
+}
+
+class TitleText extends PositionedText{
+	
+	String levelNumber, levelName;
+
+	void setLevelNumber(String l) {
+		this.levelNumber = l;
+	}
+
+	void setLevelName(String l) {
+		this.levelName = l;
+	}
+
+	void draw() {
 		fill(r,g,b,a);
 		text("Level " + (levelNumber + 1), x, y);
 		text(levelName, x, y + 15);
@@ -225,7 +261,8 @@ class User extends Locatable{
 }
 
 /**
-* Utility class to flicker the dot
+* Utility class to flicker the dot.
+* Todo: generalize into generic trig function.
 */
 class FramedAlpha {
 	
@@ -269,17 +306,27 @@ class FramedAlpha {
 	}
 }
 
-class Tween {
+class Tween extends Transition{
   float start = 0, end = 0, change = 0;
   int frame = 0;
   int totalFrames = 0;
   boolean done = false;
+  /**
+  * If this Tween is used as a Transition, callbacks
+  * are invoked each frame.
+  */
+  Object transitionCallback;
 
   Tween(float _start, float _end, int _frames) {
+  	this(_start, _end, _frames, null);
+  }
+
+  Tween(float _start, float _end, int _frames, Object callback) {
     start = _start;
     end = _end;
     change = _end - _start;
     totalFrames = _frames;
+    this.transitionCallback = callback;
   }
 
   boolean done() {
@@ -300,8 +347,20 @@ class Tween {
 
   float goToNextFrame() {
     float value = valueAtFrame(1);
+  	if (transitionCallback) {
+  		transitionCallback(value);
+	}
     frame++;
     return value;
+  }
+
+  boolean doTransition() {
+  	float value = goToNextFrame();
+  	return !done();
+  }
+
+  void setCallback(Object fn) {
+  	this.transitionCallback = fn;
   }
 }
 
@@ -312,6 +371,10 @@ class QuadEaseOut extends Tween{
 
 	QuadEaseOut(float start, float end, int frames){
 		super(start, end, frames);
+	}
+
+	QuadEaseOut(float start, float end, int frames, Object callback) {
+		super(start, end, frames, callback);
 	}
 
 	float valueAtFrame(int frameDiff) {
@@ -330,6 +393,10 @@ class Linear extends Tween{
 		super(start, end, frames);
 	}
 
+	Linear(float start, float end, int frames, Object callback) {
+		super(start, end, frames, callback);
+	}
+
 	float valueAtFrame(int frameDiff) {
 		float progress = (frame + frameDiff) / totalFrames;
 		if (progress >= 1) {
@@ -337,6 +404,30 @@ class Linear extends Tween{
 		}
 		return start + progress*change;
 	}
+}
+
+class LinearFadeOutOutro extends Linear {
+
+	Object[] objects;
+
+	LinearFadeOutOutro(Object[] objects) {
+		this(objects, null);
+	}
+
+	LinearFadeOutOutro(Object[] objects, Object callback) {
+		super(255, 0, 40, function(float value) {
+			background(255,255);
+			for(int i = 0; i < objects.length; i++) {
+				objects[i].changeAlpha(value);
+				objects[i].draw();
+			}
+			if (callback) {
+				callback(value);
+			}
+		});
+	}
+
+
 }
 
 /**
@@ -379,12 +470,15 @@ class Concealer {
 class GettingStarted extends Concealer {
 
 	Tween dotAppear = null;
+	PositionedText clickTheDot = new PositionedText();
 
 	GettingStarted(Dot dot) {
 		super(dot);
 		dotAppear = new Linear(0, 255, 80);
 		dot.changeAlpha(0);
 		dot.setPosition(docMaxWidth / 2, 400);
+		clickTheDot.setText("Click the dot.");
+		clickTheDot.setPosition(docMaxWidth/2  - 30, 100);
 	}
 
 	boolean play(User user) {
@@ -392,8 +486,7 @@ class GettingStarted extends Concealer {
 
 		float dotAlpha = dotAppear.goToNextFrame();
 
-		fill(0, dotAlpha);
-		text("Click the dot.", docMaxWidth / 2 - 30, 100);
+		clickTheDot.draw();
 
 		dot.changeAlpha(dotAlpha);
 		dot.draw();
@@ -401,6 +494,10 @@ class GettingStarted extends Concealer {
 		user.locateAtMouse();
 
 		return isHit(user);
+	}
+
+	Transition outro() {
+		return new LinearFadeOutOutro([dot, clickTheDot]);
 	}
 }
 
@@ -517,6 +614,10 @@ class TargetAcquiredConcealer extends Concealer {
 	Transition intro() {
 		return new DarkenBackground();
 	}
+
+	Transition outro() {
+		return new LightenBackground();
+	}
 }
 
 class YouOnlyNeedOneConcealer extends Concealer {
@@ -541,25 +642,7 @@ class YouOnlyNeedOneConcealer extends Concealer {
 		user.locateAtMouse();
 
 		float dotAlpha = dotAppear.valueAtCurrentFrame();
-
-		for (int i = 0; i < otherDots.length; i++) {
-			Dot target = otherDots[i];
-
-			float angleTo = target.vectorAngle(dot);
-
-			if (angleTo > PI) {
-				angleTo = angleTo - (2*PI);
-			}
-
-			float aDotDist = target.distanceFrom(dot);
-
-			target.rotateBy( angleTo / (aDotDist+1));
-
-			target.changeAlpha(dotAlpha);
-			target.move();
-			target.draw();
-
-		}
+		moveOthers(dotAlpha);
 		dot.changeAlpha(dotAlpha);
 		dotAppear.goToNextFrame();
 
@@ -579,9 +662,41 @@ class YouOnlyNeedOneConcealer extends Concealer {
 		return isHit(user);
 	}
 
-	Transition intro() {
-		return new LightenBackground();
+	void moveOthers(float newAlpha) {
+		for (int i = 0; i < otherDots.length; i++) {
+			Dot target = otherDots[i];
+
+			float angleTo = target.vectorAngle(dot);
+
+			if (angleTo > PI) {
+				angleTo = angleTo - (2*PI);
+			}
+
+			float aDotDist = target.distanceFrom(dot);
+
+			target.rotateBy( angleTo / (aDotDist+1));
+
+			target.move();
+			target.changeAlpha(newAlpha);
+			target.draw();
+
+		}
 	}
+
+	Transition outro() {
+		// YouOnlyNeedOneConcealer self = this;
+		return new Linear(255, 0, 40, function(float newAlpha) {
+				background(255,255);
+				moveOthers(newAlpha);
+				dot.changeAlpha(newAlpha);
+				dot.draw();
+			}
+		);
+	}
+}
+
+class SecondMouseCursorConcealer extends Concealer {
+
 }
 
 class Dot extends Locatable{
