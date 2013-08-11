@@ -21,12 +21,12 @@ int clickedThisFrame = 0;
 
 
 Level[] levels = [
-	// new Level("the beginning", new GettingStarted(new Dot())),
-	// new Level("movement", new Concealer(new Dot())),
-	// new Level("it won't always be easy", new BlinkingConcealer(new Dot())),
-	// new Level("follow the light", new ProximityConcealer(new Dot())),
-	// new Level("target acquired", new TargetAcquiredConcealer(new Dot())),
-	// new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot())),
+	new Level("the beginning", new GettingStarted(new Dot())),
+	new Level("movement", new Concealer(new Dot())),
+	new Level("it won't always be easy", new BlinkingConcealer(new Dot())),
+	new Level("follow the light", new ProximityConcealer(new Dot())),
+	new Level("target acquired", new TargetAcquiredConcealer(new Dot())),
+	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot())),
 	new Level("on the dancefloor", new DiscoConcealer(new Dot())),
 
 ];
@@ -698,6 +698,7 @@ class YouOnlyNeedOneConcealer extends Concealer {
 
 class DiscoConcealer extends Concealer {
 
+	long frame = 0;
 	DiscoTile[][] tiles = null;
 
 	DiscoConcealer(Dot dot) {
@@ -727,15 +728,37 @@ class DiscoConcealer extends Concealer {
 		dot.changeAlpha(255);
 	}
 
+	Transition intro() {
+		int size = tiles.length - 1;
+		return new Linear(0, size, size*2, function(float step) {
+			background(255,255);
+		
+			for(int j = 0; j < tiles[floor(step)].length; j++) {
+				tiles[floor(step)][j].changeAlpha(255);
+			}
+			
+			drawTiles(frame);
+			frame++;
+		});
+	}
+
+	void drawTiles(int offset) {
+		for(int i = 0; i < tiles.length; i++) {
+			for(int j = 0; j < tiles[0].length; j++) {
+				tiles[i][j].draw(offset);
+			}
+		}
+	}
+
 	boolean play(User user) {
 
 		boolean won = super.play(user);
-		for(int i = 0; i < tiles.length; i++) {
-			for(int j = 0; j < tiles[0].length; j++) {
-				tiles[i][j].draw();
-			}
+		float dist = user.distanceFrom(dot);
+		drawTiles(frame + floor(200000/dist+1));
+		if (dist < 100) {
+			dot.draw();
 		}
-		// dot.draw();
+		frame++;
 		return won;
 	}
 
@@ -745,7 +768,6 @@ class DiscoTile{
 
 	Locatable location;
 
-	long frame = 0;
 	float a,width, height;
 
 	/**
@@ -754,6 +776,13 @@ class DiscoTile{
 	*/
 	float rspeed, gspeed, bspeed;
 
+	/**
+	* By default, the sinoidal curve will start at a value of 0, meaning that
+	* even with different speeds, most bands will start on a grayscale and take
+	* a while to shift off.
+	*/
+	float roff, goff, boff;
+
 	DiscoTile(float x, float y, float width, float height, float seed, float a) {
 		location = new Locatable();
 		location.x = x;
@@ -761,23 +790,27 @@ class DiscoTile{
 		this.width = width;
 		this.height = height;
 
-		this.rspeed = 1 + 0.4 * noise(seed);
-		this.gspeed = 1 + 0.4 * noise(seed + 0.01);
-		this.bspeed = 1 + 0.4 * noise(seed + 0.02);
+		this.rspeed = 1 + 1.4 * noise(seed);
+		this.gspeed = 1 + 1.4 * noise(seed + 0.01);
+		this.bspeed = 1 + 1.4 * noise(seed + 0.02);
+
+		this.roff = 5 - 10 * noise(seed + 0.03);
+		this.goff = 5 - 10 * noise(seed + 0.04);
+		this.boff = 5 - 10 * noise(seed + 0.05);
+
 		this.a = a;
 	}
 
-	void draw() {
+	void draw(long frame) {
 		noStroke();
 
-		float r = (255/2)*(-cos((rspeed*frame*PI/255))+1);
-		float g = (255/2)*(-cos((gspeed*frame*PI/255))+1);
-		float b = (255/2)*(-cos((bspeed*frame*PI/255))+1);
+		float r = (255/2)*(cos(((roff + rspeed*frame*PI)/255))+1);
+		float g = (255/2)*(cos(((goff + gspeed*frame*PI)/255))+1);
+		float b = (255/2)*(cos(((boff + bspeed*frame*PI)/255))+1);
 
 		fill(r,g,b, a);
 		rect(location.x, location.y, width, height);
 		
-		frame++;
 	}
 
 	void changeAlpha(float a) {
