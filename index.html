@@ -41,7 +41,7 @@ int currentLevel = 0;
 
 void setup() {
  	size(docMaxWidth, docMaxHeight, P2D);
-
+ 	setCurrentLevelFromLink(document.location.href)
 }
 
 void mousePressed() {
@@ -52,16 +52,28 @@ void draw() {
 	Level level = levels[currentLevel];
 	boolean won = level.playLevel(user);
 	if (won) {
-		currentLevel++;
-		Level nextLevel = levels[currentLevel];
-		title.setLevelNumber(currentLevel);
-		title.setLevelName(nextLevel.name);
+		transitionToNewLevel(currentLevel + 1);
 	}
 
 	title.draw();
 
 	// counter of frames for which a click event is acceptable.
 	clickedThisFrame--;
+}
+
+void transitionToNewLevel(int newLevel) {
+	currentLevel = newLevel;
+	Level nextLevel = levels[currentLevel];
+	title.setLevelNumber(currentLevel);
+	title.setLevelName(nextLevel.name);
+	history.pushState(null, null, document.location.pathname + "#/" + (currentLevel + 1));
+}
+
+void setCurrentLevelFromLink(String uri) {
+	int level = parseInt(uri.split("/").pop());
+	if (level >= 1) {
+		transitionToNewLevel(level - 1);
+	}
 }
 
 class PositionedText {
