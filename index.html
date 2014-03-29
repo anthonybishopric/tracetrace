@@ -24,6 +24,7 @@ Level[] levels = [
 	new Level("the beginning", new GettingStarted(new Dot())),
 	new Level("movement", new Concealer(new Dot())),
 	new Level("it won't always be easy", new BlinkingConcealer(new Dot())),
+	new Level("try not to scare it", new EscapingConcealer(new Dot())),
 	new Level("follow the light", new ProximityConcealer(new Dot())),
 	new Level("target acquired", new TargetAcquiredConcealer(new Dot())),
 	new Level("i am spartacus", new YouOnlyNeedOneConcealer(new Dot())),
@@ -41,7 +42,10 @@ int currentLevel = 0;
 
 void setup() {
  	size(docMaxWidth, docMaxHeight, P2D);
- 	setCurrentLevelFromLink(document.location.href)
+ 	setCurrentLevelFromLink(document.location.href);
+ 	window.addEventListener("popstate", function(e) {
+ 		setCurrentLevelFromLink(document.location.href);
+ 	});
 }
 
 void mousePressed() {
@@ -64,13 +68,14 @@ void draw() {
 void transitionToNewLevel(int newLevel) {
 	currentLevel = newLevel;
 	Level nextLevel = levels[currentLevel];
+	nextLevel.setup();
 	title.setLevelNumber(currentLevel);
 	title.setLevelName(nextLevel.name);
-	history.pushState(null, null, document.location.pathname + "#/" + (currentLevel + 1));
+	history.pushState(null, null, document.location.pathname + "#" + (currentLevel + 1));
 }
 
 void setCurrentLevelFromLink(String uri) {
-	int level = parseInt(uri.split("/").pop());
+	int level = parseInt(uri.split("#").pop());
 	if (level >= 1) {
 		transitionToNewLevel(level - 1);
 	}
@@ -112,7 +117,7 @@ class PositionedText {
 }
 
 class TitleText extends PositionedText{
-	
+
 	String levelNumber, levelName;
 
 	void setLevelNumber(String l) {
@@ -172,6 +177,17 @@ class Level {
 		return true;
 	}
 
+	void setup() {
+		completed = false;
+		if (in) {
+			in.restart();
+		}
+		if (out) {
+			out.restart();
+		}
+
+	}
+
 }
 
 class Transition {
@@ -195,11 +211,17 @@ class Transition {
 		return true;
 	}
 
+	void restart() {
+		frame = 0;
+		if (next != null) {
+			next.restart();
+		}
+	}
 
 }
 
 class Delay extends Transition {
-	
+
 	Delay(int frameCount, Transition next) {
 		totalFrames = frameCount;
 		this.next = next;
@@ -278,7 +300,7 @@ class User extends Locatable{
 * Todo: generalize into generic trig function.
 */
 class FramedAlpha {
-	
+
 	int frame = 0;
 	float adjustRate = 15;
 	Object onMinima = null;
@@ -305,7 +327,7 @@ class FramedAlpha {
 
 		if (this.current < this.currentMinus1 && this.current < this.currentPlus1 && this.onMinima != null) {
 			onMinima();
-		}		
+		}
 
 		dot.changeAlpha(this.current);
 	}
@@ -368,8 +390,12 @@ class Tween extends Transition{
   }
 
   boolean doTransition() {
-  	float value = goToNextFrame();
-  	return !done();
+  	if (!done()) {
+  		goToNextFrame();
+  		return true;
+  	} else {
+  		return false;
+  	}
   }
 
   void setCallback(Object fn) {
@@ -450,14 +476,14 @@ class LinearFadeOutOutro extends Linear {
 class Concealer {
 
 	Dot dot;
-	
+
 	Concealer(Dot _dot) {
 		dot = _dot;
 	}
 
 	/**
 	* Play a frame with the user. The concealer returns true
-	* if the User has won the frame. 
+	* if the User has won the frame.
 	*/
 	boolean play(User user) {
 		background(255,255);
@@ -468,7 +494,7 @@ class Concealer {
 	}
 
 	boolean isHit(User user) {
-		return user.distanceFrom(dot) <= dot.radius * 3  && clickedThisFrame > 0; // diameter to make it easier
+		return user.distanceFrom(dot) <= dot.radius + 10  && clickedThisFrame > 0; // diameter to make it easier
 	}
 
 	Transition intro() {
@@ -532,6 +558,65 @@ class BlinkingConcealer extends Concealer {
 	}
 }
 
+class EscapingConcealer extends Concealer {
+
+	float maxRadius = 40; // multiplier
+	float minVelocity = 2.1213;
+	int frame = 0;
+
+	EscapingConcealer(Dot _dot) {
+		super(_dot);
+		dot.setPosition(docMaxWidth / 2, docMaxHeight / 2);
+		dot.wallMode = false;
+	}
+
+	boolean play(User user) {
+		background(255, 255);
+		user.locateAtMouse();
+		frame++;
+
+		dot.dx = dot.dx * 0.998;
+		dot.dy = dot.dy * 0.998;
+
+		float magnitude = dot.magnitude();
+		if (magnitude < minVelocity) {
+			dot.dx = dot.dx * minVelocity/magnitude;
+			dot.dy = dot.dy * minVelocity/magnitude;
+		}
+
+		dot.radius = min(5*maxRadius, dot.radius * 1.015);
+
+		float dist = user.distanceFrom(dot);
+		float accelMultiplier = min(3,pow(Math.E, -(dist-200)/25));
+
+		dot.dx = min(12, dot.dx + 0.3*accelMultiplier);
+		dot.dy = min(12, dot.dy + 0.3*accelMultiplier);
+		dot.radius = max(5, min(maxRadius*5, dot.radius - 5*accelMultiplier));
+
+		float toRotate = accelMultiplier/3 * (PI - dot.positionAngle(user));
+		if (toRotate > HALF_PI/2) {
+			dot.rotateBy(toRotate);
+		}
+
+
+		dot.move();
+		dot.draw();
+
+		return isHit(user);
+	}
+
+	Transition intro() {
+
+		return new QuadEaseOut(dot.radius, dot.radius * maxRadius, 40, function(float value) {
+			title.setGray(0,255);
+			background(255, 255);
+			dot.radius = value;
+			dot.draw();
+		});
+	}
+
+}
+
 class ProximityConcealer extends Concealer {
 
 	ProximityConcealer(Dot _dot){
@@ -553,7 +638,7 @@ class ProximityConcealer extends Concealer {
 
 		dot.move();
 		dot.draw();
-		
+
 		return isHit(user);
 	}
 
@@ -575,7 +660,7 @@ class TargetAcquiredConcealer extends Concealer {
 	}
 
 	boolean play(User user) {
-		
+
 		user.locateAtMouse();
 
 		int colorWidth = 5;
@@ -591,7 +676,7 @@ class TargetAcquiredConcealer extends Concealer {
 		for (int i = 0; i < colorWidth; i++) {
 			randomColors[i] = color(random(255), random(255), random(255), 255);
 		}
-		
+
 		if (user.x < dot.x) {
 			for (int i = 0; i < xPos.pixels.length; i++) {
 				xPos.pixels[i] = randomColors[i % colorWidth];
@@ -671,7 +756,7 @@ class YouOnlyNeedOneConcealer extends Concealer {
 		dot.move();
 		dot.draw();
 		// dot.debug(user);
-		
+
 		return isHit(user);
 	}
 
@@ -719,14 +804,14 @@ class DiscoConcealer extends Concealer {
 		float dimX = docMaxWidth / (float)down;
 		float dimY = docMaxHeight / (float)across;
 		tiles = new DiscoTile[down][across];
-		
+
 		float seed = 0;
 
 		for(int i = 0; i < down; i++) {
 			seed+= 10;
 			for(int j = 0; j < across; j++) {
 				seed+=0.03;
-				
+
 				tiles[i][j] = new DiscoTile(
 					i*dimX,
 					j*dimY,
@@ -744,11 +829,11 @@ class DiscoConcealer extends Concealer {
 		int size = tiles.length - 1;
 		return new Linear(0, size, size*2, function(float step) {
 			background(255,255);
-		
+
 			for(int j = 0; j < tiles[floor(step)].length; j++) {
 				tiles[floor(step)][j].changeAlpha(255);
 			}
-			
+
 			drawTiles(frame);
 			frame++;
 		});
@@ -784,7 +869,7 @@ class DiscoTile{
 
 	/**
 	* The tile color changes along a sinoidal curve, and the rate of change for
-	* each color is determined by the ^speed value. 
+	* each color is determined by the ^speed value.
 	*/
 	float rspeed, gspeed, bspeed;
 
@@ -822,7 +907,7 @@ class DiscoTile{
 
 		fill(r,g,b, a);
 		rect(location.x, location.y, width, height);
-		
+
 	}
 
 	void changeAlpha(float a) {
@@ -836,6 +921,7 @@ class Dot extends Locatable{
 
 	float a = 255;
 	float radius = 5;
+	boolean wallMode = true;
 
 	Dot() {
 		teleport();
@@ -847,11 +933,11 @@ class Dot extends Locatable{
 	}
 
 	void draw() {
-		
+
 		noStroke();
 		fill(10,0,0, a);
 		ellipse(x, y, radius*2, radius*2);
-		
+
 	}
 
 	void setPosition(int x, int y) {
@@ -862,11 +948,25 @@ class Dot extends Locatable{
 	void move() {
 		x += dx;
 		y += dy;
-		if (x > docMaxWidth || x < 0) {
-			dx = -dx;
-		}
-		if (y > docMaxHeight || y < 0) {
-			dy = -dy
+		if (wallMode) {
+			if (x > docMaxWidth || x < 0) {
+				dx = -dx;
+			}
+			if (y > docMaxHeight || y < 0) {
+				dy = -dy
+			}
+		} else {
+			if (x < 0) {
+				x = docMaxWidth - 10;
+			} else if (x > docMaxWidth) {
+				x = x - docMaxWidth;
+			}
+
+			if (y < 0) {
+				y = docMaxHeight - 10;
+			} else if (y > docMaxHeight) {
+				y = y - docMaxHeight;
+			}
 		}
 	}
 
@@ -894,14 +994,18 @@ class Dot extends Locatable{
 
 	}
 
+	float magnitude() {
+		return sqrt(pow(dx,2) + pow(dy, 2));
+	}
+
 	/**
 	* Two dots are traveling along their own respective
 	* dy/dx. This function returns the angle between
 	* the vectors represented by dy/dx.
 	*/
 	float vectorAngle(Dot l) {
-		float myMagnitude = sqrt(pow(dx,2) + pow(dy,2));
-		float otherMagnitude = sqrt(pow(l.dx,2) + pow(l.dy,2));
+		float myMagnitude = magnitude();
+		float otherMagnitude = l.magnitude();
 		float scalarProd = dx * l.dx + dy * l.dy;
 
 		float angle = acos(scalarProd/(myMagnitude * otherMagnitude));
@@ -912,7 +1016,7 @@ class Dot extends Locatable{
 	* One dot is moving along a dy/dx. This function returns
 	* the angle between the vector represented by its dy/dx and
 	* a vector which represents the dy/dx necessary to arrive at
-	* the position of the given dot instance in the current frame.
+	* the position of the given Locatable instance in the current frame.
 	*/
 	float positionAngle(Locatable l) {
 		// dot vector
